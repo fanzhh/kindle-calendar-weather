@@ -132,6 +132,13 @@ upstart 任务 dash-autoupdate（start on started framework）
 
 ---
 
+## 让 AI 助手帮你做
+
+不想逐条对着文档操作的话，[PROMPT.md](PROMPT.md) 里有一段可直接复制给 AI 助手
+（Claude Code / Cursor / Codex 等）的提示词，让它先诊断设备、再动手部署。
+
+---
+
 ## 回退
 
 | 目标 | 操作 |
