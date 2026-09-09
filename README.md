@@ -109,15 +109,24 @@ DASH_AUTO_SUSPEND=auto    # 唤醒后主动睡回；never=交给系统
 ```
 upstart 任务 dash-autoupdate（start on started framework）
    └─ dash-daemon.sh 常驻
-        ├─ 每 60 秒轮询，用挂钟时间判断是否到刷新间隔
+        ├─ 主循环：每 60 秒轮询，用挂钟时间判断是否到刷新间隔
         │    （不用 sleep 长间隔：busybox 的 sleep 走 CLOCK_MONOTONIC，
         │      休眠期间不走，唤醒后会白等）
         ├─ 到点则跑 ss-install.sh：下载 → 校验 PNG 头 → 内容有变才替换
-        └─ 可选：武装 RTC 闹钟 → 设备休眠 → 定时自唤醒 → 更新 → echo mem 睡回
+        └─ 事件监听：lipc-wait-event 监听 powerd
+             ├─ readyToSuspend  → lipc-set-prop -i com.lab126.powerd rtcWakeup <秒>
+             └─ wakeupFromSuspend → 开 WiFi → 更新 → eips 把新图画上屏
 ```
 
-**电池**：不主动唤醒时几乎不耗电；开启每小时唤醒后约 30 秒清醒/小时，估算 3–5 周。
-安全阀：`/mnt/us/DISABLE_DASH_SLEEP` 存在则永不主动休眠；RTC 闹钟设置失败时也不会休眠。
+**为什么不能直接写 `/sys/class/rtc/rtc0/wakealarm`**：`powerd` 在休眠的最后阶段会用
+它自己的 `rtcWakeup` 覆盖这个值（多数时候是 0，即不唤醒）。必须走 `powerd` 的接口，
+且**只能在 `readyToSuspend` 阶段设置**。详见 [docs/pitfalls.md 第 14 条](docs/pitfalls.md)。
+
+**实测数据**（Kindle 7 / 5.11.1.1）：`DASH_WAKE_INTERVAL=600` 时，设备无人触碰情况下
+屏保时间能稳定前进，滞后在「唤醒间隔 + 服务器图片缓存」范围内。
+
+**电池**：不唤醒时几乎不耗电；每小时唤醒一次约几十秒清醒，估算 3–5 周。
+安全阀：`/mnt/us/DISABLE_DASH_SLEEP` 存在则永不主动休眠；唤醒间隔设 0 可完全关闭该功能。
 
 ---
 

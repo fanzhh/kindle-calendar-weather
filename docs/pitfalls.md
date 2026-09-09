@@ -180,3 +180,82 @@ h=$(( ($5 << 24) | ($6 << 16) | ($7 << 8) | $8 ))
 
 它来自 [Universal Hotfix](https://github.com/KindleModding/Hotfix)，装法：
 `.bin` 放根目录 → 设置 → 更新您的 Kindle → 重启后在书库点一次 **Run Hotfix**。
+
+---
+
+## 14. 想定时唤醒设备，**不能**直接写 RTC 闹钟文件
+
+这是本项目踩得最深的一个坑，值得单独写。
+
+### 现象
+
+想让设备每小时自己醒一次更新屏保，于是这样写：
+
+```sh
+now=$(date +%s)
+echo 0 > /sys/class/rtc/rtc0/wakealarm
+echo $((now + 3600)) > /sys/class/rtc/rtc0/wakealarm
+```
+
+读回值正常（`cat` 能看到时间戳），但**设备一觉睡到用户按电源键才醒**，闹钟形同虚设。
+
+### 为什么
+
+设备"自己休眠"和"被我们 `echo mem` 休眠"走的是两条路：
+
+| 休眠方式 | 闹钟是否有效 |
+|---|---|
+| 脚本直接 `echo mem > /sys/power/state` | ✅ 有效 |
+| 等系统自然休眠（`powerd` 接管） | ❌ **被 `powerd` 覆盖** |
+
+`powerd` 在休眠前的最后阶段会用它自己的 `rtcWakeup` 参数重写 RTC 闹钟，
+而那个值大多数时候是 `0`（即不唤醒）。
+
+### 验证方法
+
+写个脚本把唤醒时间设成 **120 秒**，然后自己 `echo mem`：
+
+```sh
+echo 0 > /sys/class/rtc/rtc0/wakealarm
+echo $(( $(date +%s) + 120 )) > /sys/class/rtc/rtc0/wakealarm
+echo mem > /sys/power/state
+# 醒来后打印时间 —— 如果确实隔了 120 秒，说明 RTC 机制本身没问题
+```
+
+RTC 能唤醒 → 问题就出在"`powerd` 接管时覆盖闹钟"这一步。
+
+### 正确做法
+
+**必须走 `powerd` 自己的接口，并且时机很关键**：
+
+```sh
+lipc-set-prop -i com.lab126.powerd rtcWakeup <秒>
+```
+
+**这个属性只有在 `readyToSuspend` 阶段才设置得进去**，提前或之后都不生效。
+所以要监听 powerd 事件：
+
+```sh
+lipc-wait-event -m com.lab126.powerd 'goingToScreenSaver,wakeupFromSuspend,readyToSuspend'
+```
+
+事件时序：
+
+```
+熄屏 → goingToScreenSaver → readyToSuspend ×7（每 5s）→ suspending → 休眠
+唤醒 → wakeupFromSuspend → resuming → outOfScreenSaver → exitingScreenSaver
+```
+
+收到 `readyToSuspend` 就设 `rtcWakeup`，设备随后正常休眠，到点自己醒来。
+
+### 两个连带发现
+
+1. **定时器唤醒时，屏幕不会亮、屏保也不会切出去**——图片文件换了，屏上还是旧的。
+   必须自己 `eips -g <图>` 把新图画上去。
+2. **定时唤醒后 WiFi 是断的**。在休眠前关掉 WiFi、唤醒后再打开，重连才可靠。
+
+### 参考
+
+- [Kindle 电源管理（附源码分析）](https://64mb.org/2023/12/03/kindle-powerd/) —— 中文，逆向 `powerd`，把上面这套时序讲得很清楚
+- [KindleCron](https://github.com/lennardollesch/KindleCron) —— 同类项目，用同样的 `readyToSuspend` + `rtcWakeup` 方案实现"能穿透深度休眠的定时任务"
+
