@@ -18,7 +18,8 @@ from typing import List, Optional
 API = "https://api.open-meteo.com/v1/forecast"
 
 # 济宁（山东省）
-JINING = {"name": "济宁", "latitude": 35.4151, "longitude": 116.5871, "timezone": "Asia/Shanghai"}
+# 改成你的城市：name 是显示名，经纬度用小数点十进制度数
+PLACE = {"name": "北京", "latitude": 39.9042, "longitude": 116.4074, "timezone": "Asia/Shanghai"}
 
 # WMO weather code -> (中文描述, 图标类型)
 # 图标类型：sun / partly / cloud / fog / drizzle / rain / shower / snow / thunder
@@ -152,7 +153,7 @@ def _parse(payload: dict, place: dict) -> Weather:
     )
 
 
-def get_weather(place: dict = JINING, timeout: float = 8.0,
+def get_weather(place: dict = PLACE, timeout: float = 8.0,
                 max_age: float = 600.0) -> Weather:
     """取天气。优先用未过期的缓存，其次联网，最后回落到过期缓存。"""
     cache = _cache_path()

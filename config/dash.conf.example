@@ -1,7 +1,7 @@
-# Kindle 日历面板配置（改完拔线即可生效）
+# Kindle 日历面板配置（新版守护进程会自动重读，改完拔线即可）
 DASH_URL=http://192.168.1.10:8099/dash.png
 DASH_RESTART=never
 DASH_WIFI=auto
 DASH_INTERVAL=1800
-
+# 唤醒间隔：3600 = 1 小时（省电）；0 = 关闭定时唤醒
 DASH_WAKE_INTERVAL=3600
