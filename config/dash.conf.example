@@ -1,5 +1,5 @@
 # Kindle 日历面板配置（改完拔线即可生效）
-DASH_URL=http://192.168.8.103:8099/dash.png
+DASH_URL=http://192.168.1.10:8099/dash.png
 DASH_RESTART=never
 DASH_WIFI=auto
 DASH_INTERVAL=1800
