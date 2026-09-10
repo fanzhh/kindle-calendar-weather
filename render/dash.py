@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta
 from PIL import Image, ImageDraw
 
 from . import fonts, lunar
-from .weather import JINING, Weather, get_weather
+from .weather import PLACE, Weather, get_weather
 
 W, H = 600, 800
 MARGIN = 14
@@ -197,7 +197,12 @@ def _today_weather(d, w: Weather, today: date):
             d.text((W - MARGIN, y + 30), f"降水概率 {today_fc.pop}%",
                    font=fonts.font(15), fill=DARK, anchor="rt")
 
-    detail = f"体感 {w.feels:.0f}°  ·  湿度 {w.humidity}%  ·  风 {w.wind:.0f} km/h"
+    # 实况有风级就用风级（和手机天气一致），否则退回 km/h
+    wind_txt = w.wind_text or f"{w.wind:.0f} km/h"
+    parts = [f"体感 {w.feels:.0f}°", f"湿度 {w.humidity}%", f"风 {wind_txt}"]
+    if w.aqi is not None:
+        parts.append(f"AQI {w.aqi}")
+    detail = "  ·  ".join(parts)
     d.text((x, y + 102), detail, font=fonts.font(15), fill=DARK, anchor="lt")
 
 
@@ -227,10 +232,13 @@ def _footer(d, w: Weather):
     _line(d, FOOTER_Y, fill=LIGHT)
     stamp = w.fetched_at.strftime("%m-%d %H:%M")
     note = "更新 " + stamp
+    if w.obs_time:
+        note += f" · 实况 {w.obs_time}"
     if w.stale:
         note += "（缓存）"
     d.text((MARGIN, FOOTER_Y + 8), note, font=fonts.font(13), fill=DARK, anchor="lt")
-    d.text((W - MARGIN, FOOTER_Y + 8), "Open-Meteo · 济宁",
+    src = "实况+CMA" if w.source == "station" else "Open-Meteo"
+    d.text((W - MARGIN, FOOTER_Y + 8), f"{src} · 济宁",
            font=fonts.font(13), fill=DARK, anchor="rt")
 
 
