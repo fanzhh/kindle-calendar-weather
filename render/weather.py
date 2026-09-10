@@ -111,21 +111,60 @@ def _cache_path() -> str:
     return os.path.join(base, "weather.json")
 
 
-def _fetch(place: dict, timeout: float) -> dict:
-    query = (
-        f"?latitude={place['latitude']}&longitude={place['longitude']}"
-        "&current=temperature_2m,relative_humidity_2m,apparent_temperature,"
-        "weather_code,wind_speed_10m"
-        "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
-        "precipitation_probability_max"
-        f"&timezone={place['timezone'].replace('/', '%2F')}&forecast_days=4"
-    )
+CURRENT_VARS = ("temperature_2m,relative_humidity_2m,apparent_temperature,"
+                "weather_code,wind_speed_10m")
+DAILY_VARS = "weather_code,temperature_2m_max,temperature_2m_min"
+POP_VAR = "precipitation_probability_max"
+
+# 主模型：中国气象局 GRAPES（和中国手机天气 App 同源，湿度/温度更接近）
+# 需要别的模型可改成 best_match / icon_seamless / gfs_seamless 等
+PRIMARY_MODEL = os.environ.get("KINDLE_DASH_MODEL", "cma_grapes_global")
+
+
+def _get_json(query: str, timeout: float) -> dict:
     req = urllib.request.Request(
         API + query,
         headers={"User-Agent": "kindle-dash/1.0 (+mac-mini renderer)"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
+
+def _base_query(place: dict, daily_vars: str, model: str = "") -> str:
+    query = (
+        f"?latitude={place['latitude']}&longitude={place['longitude']}"
+        f"&current={CURRENT_VARS}"
+        f"&daily={daily_vars}"
+        f"&timezone={place['timezone'].replace('/', '%2F')}&forecast_days=4"
+    )
+    if model:
+        query += f"&models={model}"
+    return query
+
+
+def _fetch(place: dict, timeout: float) -> dict:
+    """取天气。
+
+    主数据用中国气象局 GRAPES 模型（和中国手机天气 App 同源），
+    但它不提供降水概率，所以再向默认模型补一次。
+    主模型失败时整体回落到默认模型。
+    """
+    try:
+        payload = _get_json(_base_query(place, DAILY_VARS, PRIMARY_MODEL), timeout)
+        if payload.get("current", {}).get("temperature_2m") is None:
+            raise ValueError("主模型无数据")
+    except Exception:
+        payload = _get_json(_base_query(place, DAILY_VARS), timeout)
+        payload["_fallback_model"] = True
+        return payload
+
+    # 补降水概率（CMA 不提供，返回 None）
+    try:
+        extra = _get_json(_base_query(place, POP_VAR), timeout)
+        payload["daily"][POP_VAR] = extra["daily"][POP_VAR]
+    except Exception:
+        payload["daily"][POP_VAR] = [None] * len(payload["daily"]["time"])
+    return payload
 
 
 def _parse(payload: dict, place: dict) -> Weather:
